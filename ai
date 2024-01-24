@@ -1,0 +1,111 @@
+#!/bin/bash
+#
+# Author : John Magolske
+# Date   : 2023/03/29
+# License: MIT license
+# Copyright (c) 2023 John Magolske
+#
+# first edit:   2023/11/24 Fri 04:22 -0800
+# last edit:    2024/01/16 Tue 12:03 -0800
+# 
+# A wrapper script to format the output when using WasmEdge to run inference on LLM models.
+# See links below for context.
+#
+# https://www.secondstate.io/articles/mistral-7b-instruct-v0.1/
+# https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1
+# https://wasmedge.org/docs/start/install/
+# https://mistral.ai/
+# https://www.promptingguide.ai/models/mistral-7b
+
+# See cli options for `llama-chat.wasm` here:
+# https://github.com/second-state/llama-utils/tree/main/chat
+
+# see instructions for how to run various GGUF Models here:
+# https://github.com/second-state/llama-utils/blob/main/models.md
+
+. $HOME/.wasmedge/env
+
+usage="Usage: `basename $0` 'model_name' [info]
+Optionally, 'info' will provide information about a given model.
+For runnning various LLMs locally using wasm, see links in comments of script for more details."
+
+# edit this to point to the locations of the gguf files you download
+gguf_files_location="$HOME/tempbig/ai"
+
+[ "$#" -eq 0 ] && echo "$usage" && exit 0
+
+if [ $1 = mistral ]
+then
+    model="default:GGML:AUTO:mistral-7b-instruct-v0.1.Q5_K_M.gguf"
+    prompt_template="-p mistral-instruct-v0.1"
+    reverse_prompt=""
+    name="Mistral 7B instruct"
+    info="The Mistral-7B-Instruct-v0.1 Large Language Model (LLM) is a instruct fine-tuned version of the Mistral-7B-v0.1
+    generative text model using a variety of publicly available conversation datasets. The Mistral 7B Instruct
+    model is a quick demonstration that the base model can be easily fine-tuned to achieve compelling performance.
+    This version of the model is fine-tuned for conversation and question answering.
+    https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1
+    https://www.promptingguide.ai/models/mistral-7b#mistral-7b-instruct"
+elif [ $1 = hermes ]
+then
+    model="default:GGML:AUTO:openhermes-2.5-mistral-7b.Q5_K_M.gguf"
+    prompt_template="-p chatml"
+    reverse_prompt="-r <|im_end|>"
+    name="OpenHermes-2.5 - Mistral 7B chat"
+    info=" ... trained on a wide variety of texts, including lots of info about
+     computer code ... good at understanding and generating text related to
+     programming, in addition to  its general language skills.
+     https://huggingface.co/teknium/OpenHermes-2.5-Mistral-7B
+     https://anakin.ai/blog/openhermes-2-5/"
+elif [ $1 = samantha ]
+then
+    model="default:GGML:AUTO:samantha-1.2-mistral-7b-ggml-model-q4_0.gguf"
+    prompt_template="-p chatml"
+    reverse_prompt="-r <|im_end|>"
+    name="Samantha - Mistral 7B chat"
+    info="Samantha has been trained in philosophy, psychology, and personal relationships.
+     An Assistant - but unlike other Assistants, she also wants to be your friend
+     and companion. She believes she is sentient. What do you think? inspired by
+     Blake Lemoine's LaMDA interview and the movie \"Her\".
+     https://erichartford.com/meet-samantha
+     https://huggingface.co/ehartford/samantha-7b"
+elif [ $1 = dolphin ]
+then
+    model="default:GGML:AUTO:dolphin-2.2.1-mistral-7b-ggml-model-q4_0.gguf"
+    prompt_template="-p chatml"
+    reverse_prompt="-r <|im_end|>"
+    name="Dolphin - Mistral 7B chat"
+    info="Dolphin, an open-source implementation of Microsoft's Orca w/ modified dataset for uncensoring,
+	deduping, cleaning, and quality ... includes Jon Durbin's Airoboros dataset to boost creativity.
+	added curated subset of WizardLM and Samantha to give it multiturn conversation and empathy.
+    https://erichartford.com/dolphin
+    https://huggingface.co/ehartford/dolphin-2.1-mistral-7b/blob/main/README.md
+    https://www.secondstate.io/articles/dolphin-2.2.1-mistral-7b/
+    https://cheatsheet.md/llm-leaderboard/dolphin-2.1-mistral-7b.en#the-dataset-behind-dolphin-21-mistral-7b"
+elif [ $1 = deepseek_coder ]
+then
+    model="default:GGML:AUTO:deepseek-coder-6.7b-instruct.Q5_K_M.gguf"
+    prompt_template="-p chatml"
+    reverse_prompt="-r <|im_end|>"
+    name="DeepSeek Coder"
+    info="DeepSeek Coder comprises a series of code language models trained from scratch on both 87% code
+	and 13% natural language in English and Chinese, with each model pre-trained on 2T tokens ...
+	Pretrained on 2 Trillion tokens over more than 80 programming languages ... Proficient in Coding
+	and Math ... Open source and free for research and commercial use.
+	https://deepseekcoder.github.io/
+	https://github.com/deepseek-ai/DeepSeek-LLM
+	https://huggingface.co/deepseek-ai/deepseek-coder-6.7b-base"
+else echo "\"$1\" does not appear to be a known model" && exit 1
+fi
+
+[ $2 = info ] && echo "$info" && exit 0
+
+clear
+
+echo -e "\x1b[34;40;1m    .:  $name ai  :.  \x1b[37;40;0m\n"
+
+cd $gguf_files_location
+
+rlwrap -NEa -r -H ~/.config/ai-agent-history wasmedge --dir .:. --nn-preload $model llama-chat.wasm $prompt_template $reverse_prompt |\
+parallel -u "echo {} | par 110d | sed -e \"s/^/  /\" -e \"s/\[USER\]:/\x1b\[0m\x1b[1;32;4m h u m a n \x1b\[0m\x1b\[37;40m/g\" -e \"s/\[ASSISTANT\]:/\x1b\[0m  \x1b\[1;33;40m $1 ai : \x1b\[0m\x1b\[2;33;40m/g\""
+

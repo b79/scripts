@@ -1,0 +1,82 @@
+#!/bin/bash
+#
+# Author : John Magolske
+# Date   : 2023/03/29
+# License: MIT license
+# Copyright (c) 2023 John Magolske
+#
+# wrapper script for interacting with sdcv, the cli interface for StarDict
+#
+# http://sdcv.sourceforge.net/
+# http://stardict.sourceforge.net
+# http://download.huzheng.org/dict.org/ <-- StarDict dictionaries downloads
+# https://freedict.org/downloads/       <-- FreeDict dictionaries downloads
+# https://github.com/ilius/pyglossary   <-- used to convert FreeDict to StarDict
+# placed the dictionaries in this directory: /usr/share/stardict/dic/
+# history of words input recorded here:  $HOME/.local/share/sdcv_history
+#
+# first edit:   2023/03/29 Wed 07:18 -0700 
+# last edit:    2023/09/03 Sun 11:27 -0700 (added options to less (incsearch, etc.))
+
+# Change some of how the sdcv output is formatted
+# see https://stackoverflow.com/questions/16086606/unix-saving-a-sed-command-in-a-variable-to-echo-it-then-execute-it
+SDCV_FILTER=(sed -e 's/^-->\x1b\[0/\n    \x1b\[0/' \
+    -e 's/^-->\x1b\[1/--> \x1b\[1/')
+
+# filter html in output from freedict dictionaries to remove <html> tags and
+# convert to plaintext
+HTML_FILTER=(sed -e 's/^ *//' \
+    -e '/<a href[^>]*>/d' \
+    -e 's/<div[^>]*example[^>]*>/\x1b\[0;32m/g' \
+    -e 's/<\/div><div lang[^>]*>/: \x1b\[0m/g' \
+    -e 's/<[^>]*>/ /g')
+
+# export this environmental variable for interactive mode,
+# to filter output & display with less pager
+export SDCV_PAGER="sed -e \"s/^-->\x1b\[0/\n    \x1b\[0/\" \
+    -e \"s/^-->\x1b\[1/--> \x1b\[1/\" \
+    -e 's/^ *//' \
+    -e '/<a href[^>]*>/d' \
+    -e 's/<div[^>]*example[^>]*>/\x1b\[0;32m/g' \
+    -e 's/<\/div><div lang[^>]*>/: \x1b\[0m/g' \
+    -e 's/<[^>]*>/ /g' | fmt -s -w $(tput cols) - | less -RMi -~ --incsearch --save-marks"
+# (wish I could just pipe SDCV_FILTER and HTML_FILTER for the above ...)
+
+word="$1"
+
+# with no arguments, launch sdcv in interactive mode, with fuzzy searching
+[ $# -eq 0 ] && sdcv --color && exit
+
+# with a word as an argument pipe output to less pager in the terminal,
+# default to exact search
+[ $# -eq 1 ] && sdcv "$word" --color --non-interactive --exact-search \
+    | "${SDCV_FILTER[@]}" | "${HTML_FILTER[@]}" | fmt -s -w $(tput cols) - | less -RMi -~ --incsearch --save-marks
+
+[ $# -lt 2 ] && exit 0
+
+# with an f after the word, do fuzzy search
+[ $2 = "f" ] && sdcv "$word" --color --non-interactive \
+    | "${SDCV_FILTER[@]}" | "${HTML_FILTER[@]}" | fmt -s -w $(tput cols) - | less -RMi -~ --incsearch --save-marks && exit 0
+
+# with a "d" after the word, provide option to select dictionary to use.
+# With fuzzy searching. Got the clues for script below from here:  
+# https://stackoverflow.com/questions/6482377/check-existence-of-input-argument-in-a-bash-shell-script
+if
+    [ $2 = "d" ] 
+then
+    prompt="Please select a dictionary:"
+    mapfile -t options < <(sdcv --list-dicts | sed -e "s/ *[0-9]*$//")
+    PS3="$prompt "
+    select opt in "${options[@]}" "Quit" ; do
+        if (( REPLY == 1 + "${#options[@]}" )) ; then
+            exit
+        elif (( REPLY > 0 && REPLY <= "${#options[@]}" )) ; then
+            sdcv "$word" --use-dict "$opt" --color --non-interactive \
+                | "${SDCV_FILTER[@]}" | "${HTML_FILTER[@]}" | fmt -s -w $(tput cols) - | less -RMi -~ --incsearch --save-marks
+            break
+        else
+            echo "Invalid selection, try again..."
+        fi
+    done
+fi
+

@@ -1,0 +1,21 @@
+#!/bin/sh
+# create a new executable shell script in the $HOME/bin directory
+# and launch vim to edit it.
+# last edit: 2024/01/24 Wed 11:24 -0800 
+
+if [ "$1" = "" ]
+then
+    echo "$0 requires an argument"
+    exit 0
+elif [ -e $HOME/bin/$1 ]
+then
+    echo "\"$1\" already exists, use a different name"
+    exit 1
+else
+    cd $HOME/bin/
+    touch "$1"
+    chmod +x "$1"
+    echo -e "#!/bin/sh\n# \n# Last edit: \n\n" > "$1"
+    vim +5 +startinsert "$1"
+fi
+
